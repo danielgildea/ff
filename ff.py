@@ -6,7 +6,9 @@
 # Placed in the Public Domain by Sreepathi Pai
 
 import selenium.webdriver as webdriver
+from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
+import selenium.common.exceptions
 import argparse
 import tempfile
 import os
@@ -27,6 +29,67 @@ def get_form_titles_old(d):
             out.append((xx, xx.text))
 
     return out
+
+class MSForm:
+    def get_form_titles(self, d):
+        x = d.find_elements_by_xpath('//div[@class="-a-53"]')
+
+        out = []
+        for xx in x:
+            y = xx.find_element(By.CSS_SELECTOR, 'span.text-format-content')
+            if y:
+                txt = y.text.replace('\n', ' ')
+                if txt.strip() == '':
+                    print("WARNING: missing title, ignoring form field")
+                    continue
+
+                out.append((xx, txt))
+
+        return out
+
+    def get_form_fields(self, cfg, form):
+        fields = cfg['fields'].keys()
+
+        f2t = {}
+        t2f = {}
+        for k in fields:
+            assert k not in f2t, f"Duplicate field {k}"
+            f2t[k] = cfg.get('fields', k)
+
+            assert f2t[k] not in t2f, f"Duplicate title {f2t[k]}"
+            t2f[f2t[k]] = k
+
+        ff = self.get_form_titles(form)
+        assert len(ff), f"Form has no titles"
+
+        flds = {}
+        for fld in ff:
+            if fld[1] in t2f:
+                id_ = fld[0].get_attribute("id")
+                print(fld[1], "found", fld, id_)
+                flds[id_] = fld
+            else:
+                print(fld[1], "not found!")
+
+        ti = RadioButtonFields.find(form, flds) + TextField.find(form, flds)
+        for tii in ti:
+             tii.csvfield = t2f[tii.name]
+
+        return ti
+
+    def set_form_data(self, fields, formdata):
+        for f in fields:
+            if isinstance(f, TextField):
+                f.element.send_keys(formdata[f.csvfield])
+            elif isinstance(f, RadioButtonFields):
+                data = formdata[f.csvfield]
+                for rb in f.element:
+                    if data in rb[0]:
+                        rb[1].click()
+                        break
+            else:
+                raise NotImplementedError(f)
+
 
 def get_form_titles(d):
     x = d.find_elements_by_xpath('//*[@role="heading"]')
@@ -67,11 +130,23 @@ class FormField(object):
 
 class TextField(FormField):
     @staticmethod
-    def find(form, fld_ids):
+    def find(form, fld_ids): # works for MS forms as well
         out = []
         for ti in itertools.chain(form.find_elements_by_xpath('//input[@type="text"]'),
-                                  form.find_elements_by_xpath('//textarea')):
+                                  form.find_elements_by_xpath('//input[@data-automation-id="textInput"]'), form.find_elements_by_xpath('//textarea')):
             tid = ti.get_attribute('aria-labelledby')
+            tid = set(tid.split())
+            if len(tid) == 1:
+                tid = tid.pop()
+            else:
+                if len(tid) == 2:
+                    tid = [x for x in tid if x.startswith('QuestionId')]
+                    assert len(tid) == 1
+                    tid = tid[0]
+                else:
+                    print('ERROR: Multiple text IDs', rbid)
+                    continue
+
             if tid in fld_ids:
                 out.append(TextField(fld_ids[tid], ti))
 
@@ -83,15 +158,42 @@ class RadioButtonFields(FormField):
         out = []
         for rb in form.find_elements_by_xpath('//div[@role="radiogroup"]'):
             rbid = rb.get_attribute('aria-labelledby')
+
+            # ms form stuff
+            rbid = set(rbid.split())
+            if len(rbid) == 1:
+                rbid = rbid.pop()
+            else:
+                if len(rbid) == 2:
+                    rbid = [x for x in rbid if x.startswith('QuestionId')]
+                    assert len(rbid) == 1
+                    rbid = rbid[0]
+                else:
+                    print('ERROR: Multiple radio button IDs', rbid)
+                    continue
+
             if rbid in fld_ids:
-                ti = rb.find_element_by_xpath('.//input[@type="text"]')
+                try:
+                    ti = rb.find_element_by_xpath('.//input[@type="text"]')
+                except selenium.common.exceptions.NoSuchElementException:
+                    ti = None
+
                 if ti is not None:
                     # doesn't work for some reason
                     al = ti.get_attribute('aria-label')
                     if al == 'Other response':
                         out.append(TextField(fld_ids[rbid], ti)) # Note: TextField!
                 else:
-                    pass
+                    ti = rb.find_elements_by_xpath('.//input[@type="radio"]')
+                    rbuttons = []
+                    for tii in ti:
+                        val = tii.get_attribute('value')
+                        rbuttons.append((val, tii))
+
+                    if len(rbuttons):
+                        out.append(RadioButtonFields(fld_ids[rbid], rbuttons))
+                    else:
+                        print(f"WARNING: Radiobutton field {rbid} does not have a text field and I could not find radio buttons")
 
         return out
 
@@ -175,9 +277,11 @@ if __name__ == "__main__":
     d = webdriver.Firefox(options=o)
     d.get(url)
 
+    form = MSForm()
+
     for r in formdata:
-        fields = get_form_fields(cfg, d)
-        set_form_data(fields, r)
+        fields = form.get_form_fields(cfg, d)
+        form.set_form_data(fields, r)
 
         x = input()
         if x == 'q': break
