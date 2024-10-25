@@ -82,7 +82,7 @@ class MSForm:
             if isinstance(f, TextField):
                 f.element.send_keys(formdata[f.csvfield])
             elif isinstance(f, RadioButtonFields):
-                data = formdata[f.csvfield]
+                data = str(formdata[f.csvfield])
                 for rb in f.element:
                     if data in rb[0]:
                         rb[1].click()
