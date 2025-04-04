@@ -18,6 +18,7 @@ import configparser
 import sys
 import itertools
 import csv
+import time
 
 def get_form_titles_old(d):
     x = d.find_elements_by_xpath('//*[@role="heading"]')
@@ -276,6 +277,7 @@ if __name__ == "__main__":
     o = Options()
     d = webdriver.Firefox(options=o)
     d.get(url)
+    time.sleep(3)
 
     form = MSForm()
 
