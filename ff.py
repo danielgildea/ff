@@ -33,7 +33,7 @@ def get_form_titles_old(d):
 
 class MSForm:
     def get_form_titles(self, d):
-        x = d.find_elements_by_xpath('//div[@class="-a-53"]')
+        x = d.find_elements_by_xpath('//div[@class="-a-54"]')
 
         out = []
         for xx in x:
