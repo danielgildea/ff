@@ -33,12 +33,11 @@ def get_form_titles_old(d):
 
 class MSForm:
     def get_form_titles(self, d):
-        x = d.find_elements("xpath", '//div[@class="css-139 "]')
+        x = d.find_elements("xpath", '//div[@class="-a-142"]')
 
         out = []
-        for xx in x:
-            div_with_id = xx.find_element(By.CLASS_NAME, '-a-142')
-            # will look at id attr of div node to match with input field
+        for div_with_id in x:
+            # will look at id attr of div_with_id to match with input field
             y = div_with_id.find_element(By.CSS_SELECTOR, 'span.text-format-content')
             
             if y:
